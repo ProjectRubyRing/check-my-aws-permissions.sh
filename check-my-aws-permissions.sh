@@ -66,6 +66,7 @@ REGION=""
 REGION_OVERRIDE=""
 S3_BUCKET=""
 S3_KEY=""
+CODECOMMIT_REPO=""
 USE_COLOR="auto"
 HAVE_JQ=0
 RESOURCE_ARNS=()
@@ -83,6 +84,8 @@ ACTIONS=(
   "lambda:ListFunctions"
   "cloudwatch:DescribeAlarms"
   "logs:DescribeLogGroups"
+  "codecommit:ListRepositories"
+  "codecommit:GetRepository"
   "sts:GetCallerIdentity"
 )
 
@@ -141,6 +144,7 @@ check-my-aws-permissions.sh
   --profile <name>             使用するAWSプロファイル（AWS_PROFILE を設定）
   --s3-bucket <name>           s3:ListBucket / s3:GetObject の確認対象バケット名
   --s3-key <key>               s3:GetObject の確認対象オブジェクトキー
+  --codecommit-repo <name>     codecommit:GetRepository の確認対象リポジトリ名
   --resource-arn <arn>         シミュレーション対象リソースARN（複数指定可・既定は *)
   --no-color | --color         色出力の無効化 / 強制
   -h | --help                  このヘルプを表示
@@ -150,6 +154,7 @@ check-my-aws-permissions.sh
   AWS_PROFILE=my-sso ./check-my-aws-permissions.sh
   ./check-my-aws-permissions.sh --profile my-sso --region ap-northeast-1
   ./check-my-aws-permissions.sh --mode live --s3-bucket my-bucket --s3-key path/to/obj
+  ./check-my-aws-permissions.sh --mode live --codecommit-repo my-repo
 
 注意:
   - IAMには「付与された全権限を1回で完全取得する単一API」は存在しません。
@@ -496,6 +501,20 @@ live_probe() {
     logs:DescribeLogGroups)
       cmd=(logs describe-log-groups --limit 1 --output json)
       if [[ -n "$REGION" ]]; then cmd+=(--region "$REGION"); fi ;;
+    codecommit:ListRepositories)
+      cmd=(codecommit list-repositories --output json)
+      if [[ -n "$REGION" ]]; then cmd+=(--region "$REGION"); fi ;;
+    codecommit:GetRepository)
+      if [[ -z "$CODECOMMIT_REPO" ]]; then
+        LP_DECISION='skipped'; LP_NOTE='--codecommit-repo 未指定のためライブ確認不可'; return 0
+      fi
+      if [[ -n "$REGION" && -n "$ACCOUNT_ID" ]]; then
+        LP_RESOURCE="arn:${PARTITION}:codecommit:${REGION}:${ACCOUNT_ID}:${CODECOMMIT_REPO}"
+      else
+        LP_RESOURCE="$CODECOMMIT_REPO"
+      fi
+      cmd=(codecommit get-repository --repository-name "$CODECOMMIT_REPO" --output json)
+      if [[ -n "$REGION" ]]; then cmd+=(--region "$REGION"); fi ;;
     iam:GetUser)
       if [[ "$PRINCIPAL_TYPE" != "iam_user" ]]; then
         LP_DECISION='skipped'; LP_NOTE='IAMユーザー以外は get-user 非対応のためスキップ'; return 0
@@ -595,6 +614,8 @@ parse_args() {
       --s3-bucket=*)  S3_BUCKET="${1#*=}"; shift ;;
       --s3-key)       require_value "$1" "$#"; S3_KEY="$2"; shift 2 ;;
       --s3-key=*)     S3_KEY="${1#*=}"; shift ;;
+      --codecommit-repo)   require_value "$1" "$#"; CODECOMMIT_REPO="$2"; shift 2 ;;
+      --codecommit-repo=*) CODECOMMIT_REPO="${1#*=}"; shift ;;
       --resource-arn) require_value "$1" "$#"; RESOURCE_ARNS+=("$2"); shift 2 ;;
       --no-color)     USE_COLOR="no"; shift ;;
       --color)        USE_COLOR="yes"; shift ;;
