@@ -86,6 +86,7 @@ ACTIONS=(
   "logs:DescribeLogGroups"
   "codecommit:ListRepositories"
   "codecommit:GetRepository"
+  "codecommit:CreateRepository"
   "sts:GetCallerIdentity"
 )
 
@@ -515,6 +516,13 @@ live_probe() {
       fi
       cmd=(codecommit get-repository --repository-name "$CODECOMMIT_REPO" --output json)
       if [[ -n "$REGION" ]]; then cmd+=(--region "$REGION"); fi ;;
+    codecommit:CreateRepository)
+      # 作成系（書き込み）アクション。実APIを呼ぶとリポジトリが作成されてしまうため、
+      # 本ツールの「読み取り専用」原則に従い live では実行せず必ずスキップする。
+      # 作成権限の有無は simulate（ポリシー評価・実アクセスなし）で確認すること。
+      LP_DECISION='skipped'
+      LP_NOTE='作成系アクションのため実APIでは確認しません（--mode simulate で評価可能）'
+      return 0 ;;
     iam:GetUser)
       if [[ "$PRINCIPAL_TYPE" != "iam_user" ]]; then
         LP_DECISION='skipped'; LP_NOTE='IAMユーザー以外は get-user 非対応のためスキップ'; return 0
